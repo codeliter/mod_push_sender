@@ -1,5 +1,5 @@
 author: "Codeliter <hackzlord at gmail.com>"
 category: "http"
 summary: "Push offline messages to a URL"
-home: "https://github.com/processone/ejabberd-contrib/tree/master/"
-url: "git@github.com:processone/ejabberd-contrib.git"
+home: "https://github.com/codeliter/mod_push_sender"
+url: "git@github.com:codeliter/mod_push_sender.git"
