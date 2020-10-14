@@ -22,21 +22,21 @@
 -include("xmpp.hrl").
 
 start(_Host, _Opt) ->
-  ?INFO_MSG("mod_offline_http_post loading", []),
+  ?INFO_MSG("mod_push_sender loading", []),
   inets:start(),
   ?INFO_MSG("HTTP client started", []),
   ejabberd_hooks:add(offline_message_hook, _Host, ?MODULE, create_message, 50).
 
 stop (_Host) ->
-  ?INFO_MSG("stopping mod_offline_http_post", []),
+  ?INFO_MSG("stopping mod_push_sender", []),
   ejabberd_hooks:delete(offline_message_hook, _Host, ?MODULE, create_message, 50).
 
 depends(_Host, _Opts) ->
   [].
 
 mod_options(_Host) ->
-  [{token, <<"">>},
-  {post_url, <<"">>}].
+  [{token, <<"http://localhost">>},
+  {post_url, <<"xx">>}].
 
 mod_opt_type(token) ->
   fun iolist_to_binary/1;
