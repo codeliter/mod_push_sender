@@ -1,56 +1,74 @@
+%Original author: dev@codepond.org
 -module(mod_push_sender).
--author('hackzlord@gmail.com').
+-author("hackzlord@gmail.com").
 
 -behaviour(gen_mod).
 
-%% Required by ?INFO_MSG macros
--include("logger.hrl").
+-export([start/2,
+        stop/1,
+        depends/2,
+        mod_options/1,
+        mod_opt_type/1,
+        create_message/1,
+        create_message/3,
+        mod_doc/0]).
 
-%% Required by ?T macro
+-ifndef(LAGER).
+-define(LAGER, 1).
+-endif.
+
 -include("translate.hrl").
--include("ejabberd_http.hrl").
+-include("logger.hrl").
+-include("xmpp.hrl").
 
-%% gen_mod API callbacks
--export([start/2, stop/1, depends/2, mod_options/1]).
+start(_Host, _Opt) ->
+  ?INFO_MSG("mod_offline_http_post loading", []),
+  inets:start(),
+  ?INFO_MSG("HTTP client started", []),
+  ejabberd_hooks:add(offline_message_hook, _Host, ?MODULE, create_message, 50).
 
-start(_Host, _Opts) ->
-    ?INFO_MSG("Starting mod_push_sender!", []),
-    ejabberd_hooks:add(offline_message_hook, _Host, ?MODULE, push_message, 50).
-    ok.
-
-stop(_Host) ->
-    ?INFO_MSG("Have a great time from mod_push_sender!", []),
-    ejabberd_hooks:delete(offline_message_hook, _Host, ?MODULE, push_message, 50).
-    ok.
+stop (_Host) ->
+  ?INFO_MSG("stopping mod_offline_http_post", []),
+  ejabberd_hooks:delete(offline_message_hook, _Host, ?MODULE, create_message, 50).
 
 depends(_Host, _Opts) ->
-    [].
+  [].
 
-push_message(_From, _To, Packet) ->
-    MessageId = xml:get_tag_attr_s(list_to_binary("id"), Packet),
-    MessageType = xml:get_tag_attr_s(list_to_binary("type"), Packet),
-    FromS = _From#jid.luser,
-    ToS = _To#jid.luser,
-    Body = xml:get_path_s(Packet, [{elem, list_to_binary("body")}, cdata]),
+mod_options(_Host) ->
+  [{token, <<"">>},
+  {post_url, <<"">>}].
 
-    if (MessageType == <<"groupchat">>) and (Body /= <<"">>) ->
-    		push_offline_message(FromS, ToS, Body, MessageType, MessageId)
-    if (MessageType == <<"chat">>) and (Body /= <<"">>) ->
-    		push_offline_message(FromS, ToS, Body, MessageType, MessageId)
-    	ok.
+mod_opt_type(token) ->
+  fun iolist_to_binary/1;
+mod_opt_type(post_url) ->
+  fun iolist_to_binary/1.
 
-push_offline_message(From, To, Body, MessageType, MessageId) ->
-    Token = gen_mod:get_opt(token, fun(S) ->econf:string() ok, ""),
-    PostUrl = gen_mod:get_module_opt(post_url, fun(S) -> econf:string() ok, ""),
+mod_doc() ->
+      #{desc =>
+            ?T("This is for sending push to url.")}.
 
-	Sep = "&",
-	Post = [
-		"from=", From, Sep,
-		"to=", To, Sep,
-		"body=", binary_to_list(Body), Sep,
-		"message_id=", binary_to_list(MessageId), Sep,
-		"message_type=", MessageType, Sep,
-		"token=",Token
-	],
-	httpc:request(post, {PostUrl, [], "application/x-www-form-urlencoded", list_to_binary(Post)},[],[]),
-    ok.
+create_message({_Action, Packet} = Acc) when (Packet#message.type == chat) and (Packet#message.body /= []) ->
+	[{text, _, Body}] = Packet#message.body,
+	post_offline_message(Packet#message.from, Packet#message.to, Body, Packet#message.id),
+  Acc;
+
+create_message(Acc) ->
+  Acc.
+
+create_message(_From, _To, Packet) when (Packet#message.type == chat) and (Packet#message.body /= []) ->
+  Body = fxml:get_path_s(Packet, [{elem, list_to_binary("body")}, cdata]),
+  MessageId = fxml:get_tag_attr_s(list_to_binary("id"), Packet),
+  post_offline_message(_From, _To, Body, MessageId),
+  ok.
+
+post_offline_message(From, To, Body, MessageId) ->
+  ?INFO_MSG("Posting From ~p To ~p Body ~p ID ~p~n",[From, To, Body, MessageId]),
+  Token = gen_mod:get_module_opt(To#jid.lserver, ?MODULE, token),
+  PostUrl = gen_mod:get_module_opt(To#jid.lserver, ?MODULE, post_url),
+  ToUser = To#jid.luser,
+  FromUser = From#jid.luser,
+  Vhost = To#jid.lserver,
+  Data = string:join(["to=", binary_to_list(ToUser), "&from=", binary_to_list(FromUser), "&vhost=", binary_to_list(Vhost), "&body=", binary_to_list(Body), "&messageId=", binary_to_list(MessageId)], ""),
+  Request = {binary_to_list(PostUrl), [{"Authorization", binary_to_list(Token)}, {"Logged-Out", "logged-out"}], "application/x-www-form-urlencoded", Data},
+  httpc:request(post, Request,[],[]),
+  ?INFO_MSG("post request sent", []).
