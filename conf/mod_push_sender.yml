@@ -1,0 +1,4 @@
+modules:
+  mod_push_sender:
+    post_url: "http://push.service.com/send"
+    token: "xxxx-xxxx"
